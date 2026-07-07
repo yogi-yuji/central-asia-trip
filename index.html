@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中亚大环线 · 伊宁 → 伊斯坦布尔</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --paper: #f5f1e8;
+      --paper-warm: #ede4cc;
+      --land: #e8dcc4;
+      --route-start: #d97706;
+      --route-end: #f59e0b;
+      --track: #7c2d12;
+      --ocean: #d4dfe8;
+      --ink: #3d2817;
+      --ink-soft: #6b5744;
+      --ink-faint: #9c8b7a;
+      --border: #d4c5a9;
+      --accent: #b91c1c;
+    }
+
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 顶部标题栏 */
+    header {
+      background: linear-gradient(180deg, var(--paper-warm) 0%, var(--paper) 100%);
+      border-bottom: 2px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    header::after {
+      content: "";
+      position: absolute;
+      bottom: -4px;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: var(--border);
+      opacity: 0.5;
+    }
+
+    .title-group h1 {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 900;
+      font-size: 28px;
+      color: var(--ink);
+      letter-spacing: 0.08em;
+      margin-bottom: 2px;
+    }
+
+    .title-group .subtitle {
+      font-family: "Noto Serif SC", serif;
+      font-size: 14px;
+      color: var(--ink-soft);
+      letter-spacing: 0.15em;
+    }
+
+    .route-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .route-badge .stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .route-badge .stat-value {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      font-size: 18px;
+      color: var(--route-start);
+    }
+
+    .route-badge .stat-label {
+      font-size: 11px;
+      color: var(--ink-soft);
+      letter-spacing: 0.1em;
+    }
+
+    .route-badge .divider {
+      width: 1px;
+      height: 32px;
+      background: var(--border);
+    }
+
+    /* 语言切换按钮 */
+    .lang-switch {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .lang-btn {
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      background: var(--paper);
+      color: var(--ink-soft);
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: "Noto Serif SC", serif;
+    }
+
+    .lang-btn:not(:last-child) {
+      border-right: 1px solid var(--border);
+    }
+
+    .lang-btn:hover {
+      background: var(--paper-warm);
+    }
+
+    .lang-btn.active {
+      background: var(--route-start);
+      color: var(--paper);
+    }
+
+    /* 主内容区 */
+    main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* 地图容器 */
+    .map-wrap {
+      flex: 1;
+      position: relative;
+      background: var(--ocean);
+      overflow: hidden;
+    }
+
+    .map-wrap svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* 地图样式 */
+    .country {
+      fill: var(--land);
+      stroke: var(--paper);
+      stroke-width: 0.5;
+      transition: fill 0.3s ease;
+      cursor: pointer;
+    }
+
+    .country:hover {
+      fill: #d4c5a9;
+    }
+
+    .country.route-country {
+      fill: url(#routeGradient);
+      cursor: pointer;
+    }
+
+    .country.route-country:hover {
+      filter: brightness(1.1);
+    }
+
+    .country.route-country.active {
+      filter: brightness(1.15) saturate(1.2);
+      stroke: var(--track);
+      stroke-width: 1.5;
+    }
+
+    /* 城市标记 */
+    .city-group {
+      cursor: pointer;
+    }
+
+    .city-dot {
+      fill: var(--track);
+      stroke: var(--paper);
+      stroke-width: 1;
+      transition: r 0.2s ease;
+    }
+
+    .city-group:hover .city-dot {
+      fill: var(--route-start);
+    }
+
+    .city-group.endpoint .city-dot {
+      fill: var(--accent);
+    }
+
+    .city-label {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      fill: var(--ink);
+      paint-order: stroke;
+      stroke: var(--paper);
+      stroke-width: 2.5;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    .city-label.endpoint {
+      fill: var(--accent);
+    }
+
+    /* 轨迹线 */
+    .track {
+      fill: none;
+      stroke: var(--track);
+      stroke-width: 1.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 8 4;
+      opacity: 0.85;
+      filter: drop-shadow(0 1px 2px rgba(124,45,18,0.25));
+      animation: dashflow 1.6s linear infinite;
+    }
+
+    .track-anim {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.7;
+    }
+
+    @keyframes dashflow {
+      to { stroke-dashoffset: -24; }
+    }
+
+    /* 国家编号标签 */
+    .country-num {
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      fill: var(--paper);
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+      opacity: 0.92;
+    }
+
+    /* tooltip */
+    .tooltip {
+      position: absolute;
+      padding: 6px 10px;
+      background: rgba(61,40,23,0.92);
+      color: var(--paper);
+      font-size: 12px;
+      border-radius: 3px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    .tooltip.visible {
+      opacity: 1;
+    }
+
+    /* 加载提示 */
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      font-size: 16px;
+      color: var(--ink-soft);
+      letter-spacing: 0.1em;
+    }
+
+    /* 地图提示文字 */
+    .map-hint {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      font-size: 12px;
+      color: var(--ink-soft);
+      letter-spacing: 0.1em;
+      pointer-events: none;
+    }
+
+    /* ===== 右侧详情面板 ===== */
+    .panel {
+      width: 420px;
+      background: linear-gradient(135deg, #faf7f0 0%, #f5f1e8 100%);
+      border-left: 2px solid var(--border);
+      overflow-y: auto;
+      padding: 28px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.05);
+    }
+
+    .panel::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .panel::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.02);
+    }
+
+    .panel::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, var(--route-start) 0%, var(--route-end) 100%);
+      border-radius: 4px;
+    }
+
+    /* 面板切换动画 */
+    .panel-content {
+      animation: slideIn 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    /* 总览页 */
+    .panel-overview h2 {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 900;
+      font-size: 26px;
+      color: var(--ink);
+      margin-bottom: 8px;
+      letter-spacing: 0.04em;
+      background: linear-gradient(135deg, var(--route-start) 0%, var(--route-end) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .panel-overview .lead {
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      color: var(--ink-soft);
+      font-size: 15px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid transparent;
+      border-image: linear-gradient(90deg, var(--route-start) 0%, var(--route-end) 50%, transparent 100%);
+      border-image-slice: 1;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .stat {
+      padding: 16px 18px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(237,228,208,0.4) 100%);
+      border-left: 4px solid var(--route-start);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      transition: all 0.3s ease;
+    }
+
+    .stat:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(217,119,6,0.15);
+    }
+
+    .stat .label {
+      font-size: 11px;
+      color: var(--ink-soft);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .stat .value {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      font-size: 22px;
+      color: var(--route-start);
+      margin-top: 4px;
+    }
+
+    .stat .value small {
+      font-size: 13px;
+      color: var(--ink-soft);
+      font-weight: 400;
+      margin-left: 4px;
+    }
+
+    .panel-section-title {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--ink);
+      letter-spacing: 0.15em;
+      margin: 28px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid transparent;
+      border-image: linear-gradient(90deg, var(--route-start) 0%, var(--route-end) 50%, transparent 100%);
+      border-image-slice: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-section-title::before {
+      content: "❖";
+      color: var(--route-start);
+      font-size: 14px;
+    }
+
+    .route-mini-list {
+      list-style: none;
+    }
+
+    .route-mini-list li {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 12px;
+      padding: 10px 12px;
+      align-items: center;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(212,197,169,0.3);
+      color: var(--ink);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      border-radius: 6px;
+      margin-bottom: 4px;
+    }
+
+    .route-mini-list li:hover {
+      background: linear-gradient(90deg, rgba(217,119,6,0.08) 0%, rgba(245,158,11,0.05) 100%);
+      transform: translateX(4px);
+    }
+
+    .route-mini-list li:last-child {
+      border-bottom: none;
+    }
+
+    .route-mini-list .num {
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      color: var(--paper);
+      font-size: 14px;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--route-start) 0%, var(--route-end) 100%);
+      border-radius: 50%;
+    }
+
+    .route-mini-list .name {
+      letter-spacing: 0.03em;
+      font-weight: 500;
+    }
+
+    .route-mini-list .days {
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      padding: 2px 8px;
+      background: rgba(217,119,6,0.08);
+      border-radius: 12px;
+    }
+
+    /* 国家详情 */
+    .country-detail .ctry-head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(237,228,208,0.5) 100%);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .ctry-flag {
+      font-size: 42px;
+      line-height: 1;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+
+    .ctry-name {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 900;
+      font-size: 26px;
+      color: var(--ink);
+      background: linear-gradient(135deg, var(--route-start) 0%, var(--route-end) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .ctry-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--ink-soft);
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid transparent;
+      border-image: linear-gradient(90deg, var(--route-start) 0%, var(--route-end) 50%, transparent 100%);
+      border-image-slice: 1;
+      letter-spacing: 0.04em;
+    }
+
+    .ctry-meta .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(237,228,208,0.6) 100%);
+      border-radius: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      font-weight: 500;
+    }
+
+    .ctry-meta .tag.entry {
+      background: linear-gradient(135deg, rgba(217,119,6,0.15) 0%, rgba(245,158,11,0.1) 100%);
+      color: var(--route-start);
+      font-weight: 600;
+    }
+
+    .ctry-meta .tag.days b {
+      color: var(--route-start);
+      font-weight: 700;
+      font-family: "Noto Serif SC", serif;
+    }
+
+    .info-block {
+      margin: 20px 0;
+    }
+
+    .info-label {
+      font-size: 11px;
+      color: var(--ink-faint);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .info-label::before {
+      content: "";
+      width: 3px;
+      height: 12px;
+      background: linear-gradient(180deg, var(--route-start) 0%, var(--route-end) 100%);
+      border-radius: 2px;
+    }
+
+    .info-text {
+      font-size: 14px;
+      color: var(--ink);
+      line-height: 1.8;
+    }
+
+    .city-card {
+      margin: 16px 0;
+      padding: 16px 18px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(237,228,208,0.5) 100%);
+      border-left: 4px solid var(--route-start);
+      border-radius: 0 10px 10px 0;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .city-card:hover {
+      transform: translateX(4px);
+      box-shadow: 0 4px 12px rgba(217,119,6,0.12);
+    }
+
+    .city-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .city-card-name {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      font-size: 17px;
+      color: var(--ink);
+    }
+
+    .city-card-days {
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      font-size: 13px;
+      color: var(--route-start);
+      padding: 2px 10px;
+      background: rgba(217,119,6,0.08);
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    .attractions {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .attractions li {
+      font-size: 12px;
+      padding: 3px 10px;
+      background: var(--paper);
+      border: 1px solid var(--border);
+      color: var(--ink-soft);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .attractions li:hover {
+      background: rgba(217,119,6,0.1);
+      border-color: var(--route-start);
+      color: var(--route-start);
+    }
+
+    .tips-box {
+      margin-top: 24px;
+      padding: 16px 18px;
+      background: linear-gradient(135deg, rgba(185,28,28,0.06) 0%, rgba(245,158,11,0.04) 100%);
+      border: 1px dashed var(--accent);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--ink);
+      line-height: 1.8;
+    }
+
+    .tips-box::before {
+      content: attr(data-tips-title);
+      display: block;
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 6px;
+      letter-spacing: 0.08em;
+      font-size: 13px;
+    }
+
+    /* ===== 底部时间轴 ===== */
+    footer {
+      border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(237,228,208,0.85), rgba(245,241,232,0.95));
+      padding: 14px 24px 16px;
+    }
+
+    .timeline-label {
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      font-size: 12px;
+      color: var(--ink-soft);
+      margin-bottom: 10px;
+      letter-spacing: 0.1em;
+    }
+
+    .timeline {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .timeline::-webkit-scrollbar {
+      height: 5px;
+    }
+
+    .timeline::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    .tl-card {
+      flex: 0 0 auto;
+      width: 168px;
+      padding: 10px 14px;
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .tl-card:hover {
+      border-color: var(--route-start);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(124,45,18,0.12);
+    }
+
+    .tl-card.active {
+      background: var(--route-active);
+      border-color: var(--route-active);
+      color: var(--paper);
+    }
+
+    .tl-card.active .tl-num,
+    .tl-card.active .tl-name,
+    .tl-card.active .tl-days {
+      color: var(--paper);
+    }
+
+    .tl-card.active .tl-num {
+      background: rgba(255,255,255,0.25);
+    }
+
+    .tl-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--route-start);
+      color: var(--paper);
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .tl-name {
+      font-family: "Noto Serif SC", serif;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--ink);
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tl-days {
+      font-family: "Cormorant Garamond", serif;
+      font-style: italic;
+      font-size: 12px;
+      color: var(--route-active);
+    }
+
+    .tl-card.active .tl-days {
+      color: rgba(255,255,255,0.85);
+    }
+
+    /* 响应式 */
+    @media (max-width: 1024px) {
+      main {
+        flex-direction: column;
+      }
+
+      .panel {
+        width: 100%;
+        max-height: 40vh;
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- 顶部标题栏 -->
+  <header>
+    <div class="title-group">
+      <h1>中亚大环线</h1>
+      <div class="subtitle">伊宁 → 伊斯坦布尔 · 古丝绸之路的现代漫游</div>
+    </div>
+    <div class="route-badge">
+      <div class="stat">
+        <div class="stat-value" data-i18n="segments">9</div>
+        <div class="stat-label" data-i18n="segmentsLabel">行程段</div>
+      </div>
+      <div class="divider"></div>
+      <div class="stat">
+        <div class="stat-value">8</div>
+        <div class="stat-label" data-i18n="countriesLabel">国家/地区</div>
+      </div>
+      <div class="divider"></div>
+      <div class="stat">
+        <div class="stat-value">~40</div>
+        <div class="stat-label" data-i18n="daysLabel">建议天数</div>
+      </div>
+      <div class="divider"></div>
+      <div class="lang-switch">
+        <button class="lang-btn active" data-lang="zh">中文</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main>
+    <!-- 地图容器 -->
+    <div class="map-wrap" id="mapWrap">
+      <div class="map-hint">点击高亮国家查看详情</div>
+      <div class="loading" id="loading">Loading the map</div>
+    </div>
+
+    <!-- 右侧详情面板 -->
+    <aside class="panel" id="panel">
+      <!-- 内容由 JS 渲染 -->
+    </aside>
+  </main>
+
+  <!-- 底部时间轴 -->
+  <footer>
+    <div class="timeline-label">— 行程时间轴 · Itinerary Timeline —</div>
+    <div class="timeline" id="timeline">
+      <!-- 卡片由 JS 渲染 -->
+    </div>
+  </footer>
+
+  <!-- tooltip -->
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    // ===== 路线数据 =====
+    const routeData = [
+      {
+        id: 0,
+        countryCode: "CN",
+        countryName: "中国·伊宁",
+        flag: "🇨🇳",
+        entryLabel: "起点",
+        days: "1-2 天",
+        daysNum: 2,
+        transportFrom: "旅程起点",
+        cities: [
+          {
+            name: "伊宁",
+            coords: [81.33, 43.91],
+            days: "1-2 天",
+            attractions: ["喀赞其民俗区", "六星街", "伊犁河", "汉人街大巴扎"]
+          }
+        ],
+        tips: "伊宁是伊犁哈萨克自治州首府，多民族聚居地，建议品尝当地美食如马肠子、奶疙瘩。秋季（9-10月）气候最宜人。"
+      },
+      {
+        id: 1,
+        countryCode: "KZ",
+        countryName: "哈萨克斯坦",
+        flag: "🇰🇿",
+        entryLabel: "首次入境",
+        days: "3-4 天",
+        daysNum: 4,
+        transportFrom: "伊宁陆路过境（霍尔果斯口岸）",
+        cities: [
+          {
+            name: "阿拉木图",
+            coords: [76.95, 43.25],
+            days: "3-4 天",
+            attractions: ["升天大教堂", "绿色市场", "麦迪奥高山滑冰场", "琼布拉克滑雪场"]
+          }
+        ],
+        tips: "哈萨克斯坦是中亚最大国家，阿拉木图是前首都。可用支付宝在部分商户消费；建议秋春两季。从阿拉木图可飞或陆路前往乌兹别克斯坦。"
+      },
+      {
+        id: 2,
+        countryCode: "UZ",
+        countryName: "乌兹别克斯坦",
+        flag: "🇺🇿",
+        entryLabel: "丝路核心",
+        days: "7-9 天",
+        daysNum: 9,
+        transportFrom: "阿拉木图飞塔什干（约2小时）",
+        cities: [
+          {
+            name: "塔什干",
+            coords: [69.28, 41.31],
+            days: "1-2 天",
+            attractions: ["独立广场", "哈兹拉提伊玛目建筑群", "楚苏巴扎", "地铁"]
+          },
+          {
+            name: "撒马尔罕",
+            coords: [66.96, 39.65],
+            days: "2-3 天",
+            attractions: ["雷吉斯坦广场", "沙赫静达陵墓群", "比比哈努姆清真寺", "古尔·阿米尔陵"]
+          },
+          {
+            name: "布哈拉",
+            coords: [64.42, 39.77],
+            days: "2 天",
+            attractions: ["波伊卡扬建筑群", "伊斯梅尔·萨马尼陵", "LABI HAUZ 水池", "老城墙"]
+          },
+          {
+            name: "希瓦",
+            coords: [60.36, 41.38],
+            days: "1-2 天",
+            attractions: ["伊钦卡拉内城", "卡尔塔Minor宣礼塔", "朱玛清真寺", "Tash Hauli 宫殿"]
+          }
+        ],
+        tips: "乌兹别克斯坦是丝路心脏地带，撒马尔罕、布哈拉、希瓦三座古城必看。中国护照可免签入境。建议春秋前往，夏季酷热。当地货币为苏姆，建议携带美元现金兑换。"
+      },
+      {
+        id: 3,
+        countryCode: "KZ",
+        countryName: "哈萨克斯坦·阿克套",
+        flag: "🇰🇿",
+        entryLabel: "二次入境",
+        days: "2 天",
+        daysNum: 2,
+        transportFrom: "希瓦陆路前往阿克套（约1天车程）",
+        cities: [
+          {
+            name: "阿克套",
+            coords: [51.15, 43.65],
+            days: "2 天",
+            attractions: ["里海海岸", "灯塔纪念碑", "Beineu 峡谷", "当地鱼市"]
+          }
+        ],
+        tips: "阿克套是里海沿岸港口城市，从希瓦前往需较长陆路时间。可在此体验里海风光，随后飞或船前往阿塞拜疆巴库。"
+      },
+      {
+        id: 4,
+        countryCode: "AZ",
+        countryName: "阿塞拜疆",
+        flag: "🇦🇿",
+        entryLabel: "火之国",
+        days: "4-5 天",
+        daysNum: 5,
+        transportFrom: "阿克套飞巴库（约1小时）或里海轮渡",
+        cities: [
+          {
+            name: "巴库",
+            coords: [49.87, 40.41],
+            days: "3 天",
+            attractions: ["老城 İçərişəhər", "火焰塔", "戈布斯坦岩画", "Heydar Aliyev 中心", "少女塔"]
+          },
+          {
+            name: "舍基",
+            coords: [46.71, 41.19],
+            days: "1-2 天",
+            attractions: ["舍基汗宫", "古驿站 Karavansaray", "基什村教堂", "高加索山脚葡萄园"]
+          }
+        ],
+        tips: "阿塞拜疆被誉为「火之国」，巴库的火焰塔与永不熄灭的 Yanar Dağ 是标志。中国护照可落地签/电子签；从舍基陆路过境前往格鲁吉亚或亚美尼亚方向很方便。"
+      },
+      {
+        id: 5,
+        countryCode: "IR",
+        countryName: "伊朗",
+        flag: "🇮🇷",
+        entryLabel: "波斯古国",
+        days: "8-10 天",
+        daysNum: 10,
+        transportFrom: "巴库飞德黑兰（约1小时）",
+        cities: [
+          {
+            name: "大不里士",
+            coords: [46.29, 38.07],
+            days: "1-2 天",
+            attractions: ["蓝色清真寺", "大巴扎", "宪法大厦", "坎万溶洞"]
+          },
+          {
+            name: "德黑兰",
+            coords: [51.39, 35.69],
+            days: "2 天",
+            attractions: ["古列斯坦宫", "国家博物馆", "伊朗地毯博物馆", "阿扎迪塔"]
+          },
+          {
+            name: "伊斯法罕",
+            coords: [51.67, 32.65],
+            days: "2-3 天",
+            attractions: ["伊玛目广场", "三十三孔桥", "凡克主教座堂", "阿里卡普宫", "谢赫·洛夫清真寺"]
+          },
+          {
+            name: "设拉子",
+            coords: [52.58, 29.59],
+            days: "2-3 天",
+            attractions: ["粉红清真寺", "波斯波利斯遗址", "帕萨尔加德", "天堂花园", "哈菲兹陵墓"]
+          }
+        ],
+        tips: "伊朗是波斯文明核心，伊斯法罕「半天下」名不虚传。中国护照可免签21天；女性需戴头巾；建议秋季至春季（10月-次年4月）前往；无法使用国际信用卡，需携带充足美元现金。"
+      },
+      {
+        id: 6,
+        countryCode: "AM",
+        countryName: "亚美尼亚",
+        flag: "🇦🇲",
+        entryLabel: "高加索小国",
+        days: "3-4 天",
+        daysNum: 4,
+        transportFrom: "德黑兰飞埃里温（约2.5小时）或陆路过境",
+        cities: [
+          {
+            name: "埃里温",
+            coords: [44.51, 40.18],
+            days: "2 天",
+            attractions: ["共和国广场", "马坦纳达兰", "Cascade 阶梯", "Genocide Memorial"]
+          },
+          {
+            name: "塞凡湖",
+            coords: [45.96, 40.55],
+            days: "1 天",
+            attractions: ["塞凡修道院", "湖岸骑行", "当地鱼餐厅"]
+          },
+          {
+            name: "格加尔德修道院",
+            coords: [44.78, 40.17],
+            days: "0.5 天",
+            attractions: ["岩凿修道院", "山谷徒步"]
+          }
+        ],
+        tips: "亚美尼亚是高加索小国，埃里温适合漫步。中国护照可免签。从伊朗或格鲁吉亚陆路入境均方便。当地货币为德拉姆，建议携带美元或欧元兑换。"
+      },
+      {
+        id: 7,
+        countryCode: "GE",
+        countryName: "格鲁吉亚",
+        flag: "🇬🇪",
+        entryLabel: "高加索明珠",
+        days: "4-5 天",
+        daysNum: 5,
+        transportFrom: "埃里温陆路前往第比利斯（约6小时）",
+        cities: [
+          {
+            name: "第比利斯",
+            coords: [44.83, 41.72],
+            days: "2 天",
+            attractions: ["老城", "纳里卡拉要塞", "硫磺浴区", "和平桥", "Rustaveli 大道"]
+          },
+          {
+            name: "姆茨赫塔",
+            coords: [44.69, 41.84],
+            days: "0.5 天",
+            attractions: ["Svetitskhoveli 大教堂", "Jvari 修道院"]
+          },
+          {
+            name: "卡兹别吉",
+            coords: [44.64, 42.66],
+            days: "1-2 天",
+            attractions: ["圣三一教堂", "Gergeti 徒步", "高加索山景"]
+          },
+          {
+            name: "西格纳吉",
+            coords: [45.94, 41.62],
+            days: "1 天",
+            attractions: ["红酒小镇", "酒庄品鉴", "阿拉赞迪河谷"]
+          }
+        ],
+        tips: "格鲁吉亚是葡萄酒发源地，卡兹别吉的山景震撼。中国护照可免签。从第比利斯可飞或陆路前往土耳其伊斯坦布尔。当地货币为拉里，建议携带美元或欧元兑换。"
+      },
+      {
+        id: 8,
+        countryCode: "TR",
+        countryName: "土耳其",
+        flag: "🇹🇷",
+        entryLabel: "终点站",
+        days: "4-5 天",
+        daysNum: 5,
+        transportFrom: "第比利斯飞伊斯坦布尔（约2.5小时）",
+        cities: [
+          {
+            name: "伊斯坦布尔",
+            coords: [28.98, 41.01],
+            days: "4-5 天",
+            attractions: ["蓝色清真寺", "圣索菲亚大教堂", "大巴扎", "博斯普鲁斯海峡游船", "托普卡帕宫"]
+          }
+        ],
+        tips: "伊斯坦布尔是横跨欧亚的千年古都，作为旅程终点非常合适。中国护照可申请电子签。建议预留充足时间探索这座城市的丰富历史与文化。"
+      }
+    ];
+
+    // ===== 翻译数据 =====
+    let currentLang = "zh";
+
+    const translations = {
+      zh: {
+        title: "中亚大环线",
+        subtitle: "伊宁 → 伊斯坦布尔 · 古丝绸之路的现代漫游",
+        segmentsLabel: "行程段",
+        countriesLabel: "国家/地区",
+        daysLabel: "建议天数",
+        mapHint: "点击高亮国家查看详情",
+        timelineLabel: "— 行程时间轴 · Itinerary Timeline —",
+        overviewTitle: "旅程总览",
+        overviewLead: "从天山脚下到博斯普鲁斯海峡。",
+        totalSegments: "总行程段",
+        totalCountries: "横跨国家",
+        totalDays: "预计天数",
+        totalCities: "途经城市",
+        fullRoute: "完整路线",
+        usage: "使用说明",
+        usageText: "点击地图上高亮的国家或上方路线列表，查看该段行程的详细景点建议；底部时间轴可快速跳转。起点（伊宁）与终点（伊斯坦布尔）以旗帜图标标记。",
+        segment: "第",
+        segmentSuffix: "段",
+        transportLabel: "前往方式",
+        citiesLabel: "城市与景点",
+        tipsPrefix: "※ 旅行贴士",
+        unitSegment: "段",
+        unitCountry: "个",
+        unitDay: "天",
+        unitCity: "座",
+        loading: "Loading the map",
+        loadError: "地图加载失败，请检查网络"
+      },
+      en: {
+        title: "Central Asia Grand Loop",
+        subtitle: "Yining → Istanbul · A Modern Journey on the Silk Road",
+        segmentsLabel: "Segments",
+        countriesLabel: "Countries",
+        daysLabel: "Days",
+        mapHint: "Click a highlighted country for details",
+        timelineLabel: "— Itinerary Timeline —",
+        overviewTitle: "Journey Overview",
+        overviewLead: "From the Tianshan foothills to the Bosphorus shore.",
+        totalSegments: "Total Segments",
+        totalCountries: "Countries",
+        totalDays: "Estimated Days",
+        totalCities: "Cities",
+        fullRoute: "Full Route",
+        usage: "How to Use",
+        usageText: "Click a highlighted country on the map or an item in the route list to view detailed attractions. Use the timeline at the bottom to jump between segments. The start (Yining) and end (Istanbul) are marked with flag icons.",
+        segment: "Seg.",
+        segmentSuffix: "",
+        transportLabel: "Transport",
+        citiesLabel: "Cities & Attractions",
+        tipsPrefix: "※ Travel Tips",
+        unitSegment: "seg",
+        unitCountry: "",
+        unitDay: "days",
+        unitCity: "cities",
+        loading: "Loading the map",
+        loadError: "Failed to load map. Please check your network."
+      }
+    };
+
+    // 路线数据翻译
+    const routeDataTranslations = {
+      zh: [
+        {
+          countryName: "中国·伊宁",
+          entryLabel: "起点",
+          days: "1-2 天",
+          transportFrom: "旅程起点",
+          cities: [
+            { name: "伊宁", days: "1-2 天", attractions: ["喀赞其民俗区", "六星街", "伊犁河", "汉人街大巴扎"] }
+          ],
+          tips: "伊宁是伊犁哈萨克自治州首府，多民族聚居地，建议品尝当地美食如马肠子、奶疙瘩。秋季（9-10月）气候最宜人。"
+        },
+        {
+          countryName: "哈萨克斯坦",
+          entryLabel: "首次入境",
+          days: "3-4 天",
+          transportFrom: "伊宁陆路过境（霍尔果斯口岸）",
+          cities: [
+            { name: "阿拉木图", days: "3-4 天", attractions: ["升天大教堂", "绿色市场", "麦迪奥高山滑冰场", "琼布拉克滑雪场"] }
+          ],
+          tips: "哈萨克斯坦是中亚最大国家，阿拉木图是前首都。可用支付宝在部分商户消费；建议秋春两季。从阿拉木图可飞或陆路前往乌兹别克斯坦。"
+        },
+        {
+          countryName: "乌兹别克斯坦",
+          entryLabel: "丝路核心",
+          days: "7-9 天",
+          transportFrom: "阿拉木图飞塔什干（约2小时）",
+          cities: [
+            { name: "塔什干", days: "1-2 天", attractions: ["独立广场", "哈兹拉提伊玛目建筑群", "楚苏巴扎", "地铁"] },
+            { name: "撒马尔罕", days: "2-3 天", attractions: ["雷吉斯坦广场", "沙赫静达陵墓群", "比比哈努姆清真寺", "古尔·阿米尔陵"] },
+            { name: "布哈拉", days: "2 天", attractions: ["波伊卡扬建筑群", "伊斯梅尔·萨马尼陵", "LABI HAUZ 水池", "老城墙"] },
+            { name: "希瓦", days: "1-2 天", attractions: ["伊钦卡拉内城", "卡尔塔Minor宣礼塔", "朱玛清真寺", "Tash Hauli 宫殿"] }
+          ],
+          tips: "乌兹别克斯坦是丝路心脏地带，撒马尔罕、布哈拉、希瓦三座古城必看。中国护照可免签入境。建议春秋前往，夏季酷热。当地货币为苏姆，建议携带美元现金兑换。"
+        },
+        {
+          countryName: "哈萨克斯坦·阿克套",
+          entryLabel: "二次入境",
+          days: "2 天",
+          transportFrom: "希瓦陆路前往阿克套（约1天车程）",
+          cities: [
+            { name: "阿克套", days: "2 天", attractions: ["里海海岸", "灯塔纪念碑", "Beineu 峡谷", "当地鱼市"] }
+          ],
+          tips: "阿克套是里海沿岸港口城市，从希瓦前往需较长陆路时间。可在此体验里海风光，随后飞或船前往阿塞拜疆巴库。"
+        },
+        {
+          countryName: "阿塞拜疆",
+          entryLabel: "火之国",
+          days: "4-5 天",
+          transportFrom: "阿克套飞巴库（约1小时）或里海轮渡",
+          cities: [
+            { name: "巴库", days: "3 天", attractions: ["老城 İçərişəhər", "火焰塔", "戈布斯坦岩画", "Heydar Aliyev 中心", "少女塔"] },
+            { name: "舍基", days: "1-2 天", attractions: ["舍基汗宫", "古驿站 Karavansaray", "基什村教堂", "高加索山脚葡萄园"] }
+          ],
+          tips: "阿塞拜疆被誉为「火之国」，巴库的火焰塔与永不熄灭的 Yanar Dağ 是标志。中国护照可落地签/电子签；从舍基陆路过境前往格鲁吉亚或亚美尼亚方向很方便。"
+        },
+        {
+          countryName: "伊朗",
+          entryLabel: "波斯古国",
+          days: "8-10 天",
+          transportFrom: "巴库飞德黑兰（约1小时）",
+          cities: [
+            { name: "大不里士", days: "1-2 天", attractions: ["蓝色清真寺", "大巴扎", "宪法大厦", "坎万溶洞"] },
+            { name: "德黑兰", days: "2 天", attractions: ["古列斯坦宫", "国家博物馆", "伊朗地毯博物馆", "阿扎迪塔"] },
+            { name: "伊斯法罕", days: "2-3 天", attractions: ["伊玛目广场", "三十三孔桥", "凡克主教座堂", "阿里卡普宫", "谢赫·洛夫清真寺"] },
+            { name: "设拉子", days: "2-3 天", attractions: ["粉红清真寺", "波斯波利斯遗址", "帕萨尔加德", "天堂花园", "哈菲兹陵墓"] }
+          ],
+          tips: "伊朗是波斯文明核心，伊斯法罕「半天下」名不虚传。中国护照可免签21天；女性需戴头巾；建议秋季至春季（10月-次年4月）前往；无法使用国际信用卡，需携带充足美元现金。"
+        },
+        {
+          countryName: "亚美尼亚",
+          entryLabel: "高加索小国",
+          days: "3-4 天",
+          transportFrom: "德黑兰飞埃里温（约2.5小时）或陆路过境",
+          cities: [
+            { name: "埃里温", days: "2 天", attractions: ["共和国广场", "马坦纳达兰", "Cascade 阶梯", "Genocide Memorial"] },
+            { name: "塞凡湖", days: "1 天", attractions: ["塞凡修道院", "湖岸骑行", "当地鱼餐厅"] },
+            { name: "格加尔德修道院", days: "0.5 天", attractions: ["岩凿修道院", "山谷徒步"] }
+          ],
+          tips: "亚美尼亚是高加索小国，埃里温适合漫步。中国护照可免签。从伊朗或格鲁吉亚陆路入境均方便。当地货币为德拉姆，建议携带美元或欧元兑换。"
+        },
+        {
+          countryName: "格鲁吉亚",
+          entryLabel: "高加索明珠",
+          days: "4-5 天",
+          transportFrom: "埃里温陆路前往第比利斯（约6小时）",
+          cities: [
+            { name: "第比利斯", days: "2 天", attractions: ["老城", "纳里卡拉要塞", "硫磺浴区", "和平桥", "Rustaveli 大道"] },
+            { name: "姆茨赫塔", days: "0.5 天", attractions: ["Svetitskhoveli 大教堂", "Jvari 修道院"] },
+            { name: "卡兹别吉", days: "1-2 天", attractions: ["圣三一教堂", "Gergeti 徒步", "高加索山景"] },
+            { name: "西格纳吉", days: "1 天", attractions: ["红酒小镇", "酒庄品鉴", "阿拉赞迪河谷"] }
+          ],
+          tips: "格鲁吉亚是葡萄酒发源地，卡兹别吉的山景震撼。中国护照可免签。从第比利斯可飞或陆路前往土耳其伊斯坦布尔。当地货币为拉里，建议携带美元或欧元兑换。"
+        },
+        {
+          countryName: "土耳其",
+          entryLabel: "终点站",
+          days: "4-5 天",
+          transportFrom: "第比利斯飞伊斯坦布尔（约2.5小时）",
+          cities: [
+            { name: "伊斯坦布尔", days: "4-5 天", attractions: ["蓝色清真寺", "圣索菲亚大教堂", "大巴扎", "博斯普鲁斯海峡游船", "托普卡帕宫"] }
+          ],
+          tips: "伊斯坦布尔是横跨欧亚的千年古都，作为旅程终点非常合适。中国护照可申请电子签。建议预留充足时间探索这座城市的丰富历史与文化。"
+        }
+      ],
+      en: [
+        {
+          countryName: "China · Yining",
+          entryLabel: "Starting Point",
+          days: "1-2 days",
+          transportFrom: "Journey begins",
+          cities: [
+            { name: "Yining", days: "1-2 days", attractions: ["Kazanqi Folk District", "Six Star Street", "Ili River", "Hanren Street Grand Bazaar"] }
+          ],
+          tips: "Yining is the capital of Ili Kazakh Autonomous Prefecture, a multi-ethnic city. Try local delicacies like horse sausage and dried curd. Autumn (Sep-Oct) has the most pleasant weather."
+        },
+        {
+          countryName: "Kazakhstan",
+          entryLabel: "First Entry",
+          days: "3-4 days",
+          transportFrom: "Overland from Yining (Khorgos Border)",
+          cities: [
+            { name: "Almaty", days: "3-4 days", attractions: ["Zenkov Cathedral", "Green Bazaar", "Medeu Skating Rink", "Shymbulak Ski Resort"] }
+          ],
+          tips: "Kazakhstan is the largest country in Central Asia; Almaty is the former capital. Alipay accepted at some merchants. Best visited in spring or autumn. Fly or take land transport to Uzbekistan from Almaty."
+        },
+        {
+          countryName: "Uzbekistan",
+          entryLabel: "Silk Road Heart",
+          days: "7-9 days",
+          transportFrom: "Fly from Almaty to Tashkent (~2 hrs)",
+          cities: [
+            { name: "Tashkent", days: "1-2 days", attractions: ["Independence Square", "Hazrati Imam Complex", "Chorsu Bazaar", "Metro"] },
+            { name: "Samarkand", days: "2-3 days", attractions: ["Registan Square", "Shah-i-Zinda", "Bibi-Khanym Mosque", "Gur-e-Amir Mausoleum"] },
+            { name: "Bukhara", days: "2 days", attractions: ["Poi Kalan Complex", "Ismail Samani Mausoleum", "Labi Hauz", "Old City Walls"] },
+            { name: "Khiva", days: "1-2 days", attractions: ["Itchan Kala", "Kalta Minor Minaret", "Juma Mosque", "Tash Hauli Palace"] }
+          ],
+          tips: "Uzbekistan is the heart of the Silk Road — Samarkand, Bukhara, and Khiva are must-see ancient cities. Chinese passport holders get visa-free entry. Best in spring/autumn; summers are extremely hot. Local currency is Som; bring USD cash to exchange."
+        },
+        {
+          countryName: "Kazakhstan · Aktau",
+          entryLabel: "Re-entry",
+          days: "2 days",
+          transportFrom: "Overland from Khiva to Aktau (~1 day drive)",
+          cities: [
+            { name: "Aktau", days: "2 days", attractions: ["Caspian Seaside", "Lighthouse Monument", "Beineu Canyon", "Local Fish Market"] }
+          ],
+          tips: "Aktau is a Caspian Sea port city. The overland journey from Khiva takes considerable time. Enjoy the Caspian coast here, then fly or take a ferry to Baku, Azerbaijan."
+        },
+        {
+          countryName: "Azerbaijan",
+          entryLabel: "Land of Fire",
+          days: "4-5 days",
+          transportFrom: "Fly from Aktau to Baku (~1 hr) or Caspian ferry",
+          cities: [
+            { name: "Baku", days: "3 days", attractions: ["Old City İçərişəhər", "Flame Towers", "Gobustan Rock Art", "Heydar Aliyev Center", "Maiden Tower"] },
+            { name: "Sheki", days: "1-2 days", attractions: ["Sheki Khan's Palace", "Ancient Karavansaray", "Kish Village Church", "Caucasus Foothill Vineyards"] }
+          ],
+          tips: "Azerbaijan is known as the 'Land of Fire' — Baku's Flame Towers and the eternal Yanar Dağ are iconic. Chinese passport holders can get visa on arrival / e-visa. Overland from Sheki to Georgia or Armenia is convenient."
+        },
+        {
+          countryName: "Iran",
+          entryLabel: "Ancient Persia",
+          days: "8-10 days",
+          transportFrom: "Fly from Baku to Tehran (~1 hr)",
+          cities: [
+            { name: "Tabriz", days: "1-2 days", attractions: ["Blue Mosque", "Grand Bazaar", "Constitution House", "Alisadr Cave"] },
+            { name: "Tehran", days: "2 days", attractions: ["Golestan Palace", "National Museum", "Carpet Museum", "Azadi Tower"] },
+            { name: "Isfahan", days: "2-3 days", attractions: ["Imam Square", "Si-o-se-pol Bridge", "Vank Cathedral", "Ali Qapu Palace", "Sheikh Lotfollah Mosque"] },
+            { name: "Shiraz", days: "2-3 days", attractions: ["Pink Mosque", "Persepolis Ruins", "Pasargadae", "Eram Garden", "Tomb of Hafez"] }
+          ],
+          tips: "Iran is the core of Persian civilization — Isfahan's 'Half of the World' lives up to its name. Chinese passport holders get 21-day visa-free entry. Women must wear hijab. Best from autumn to spring (Oct-Apr). International credit cards not accepted; bring plenty of USD cash."
+        },
+        {
+          countryName: "Armenia",
+          entryLabel: "Caucasus Gem",
+          days: "3-4 days",
+          transportFrom: "Fly from Tehran to Yerevan (~2.5 hrs) or overland",
+          cities: [
+            { name: "Yerevan", days: "2 days", attractions: ["Republic Square", "Matenadaran", "Cascade Steps", "Genocide Memorial"] },
+            { name: "Lake Sevan", days: "1 day", attractions: ["Sevan Monastery", "Lakeside Cycling", "Local Fish Restaurants"] },
+            { name: "Geghard Monastery", days: "0.5 days", attractions: ["Rock-cut Monastery", "Valley Hiking"] }
+          ],
+          tips: "Armenia is a small Caucasus nation; Yerevan is perfect for strolling. Chinese passport holders get visa-free entry. Accessible by land from Iran or Georgia. Local currency is Dram; bring USD or EUR to exchange."
+        },
+        {
+          countryName: "Georgia",
+          entryLabel: "Pearl of the Caucasus",
+          days: "4-5 days",
+          transportFrom: "Overland from Yerevan to Tbilisi (~6 hrs)",
+          cities: [
+            { name: "Tbilisi", days: "2 days", attractions: ["Old Town", "Narikala Fortress", "Sulfur Baths", "Peace Bridge", "Rustaveli Avenue"] },
+            { name: "Mtskheta", days: "0.5 days", attractions: ["Svetitskhoveli Cathedral", "Jvari Monastery"] },
+            { name: "Kazbegi", days: "1-2 days", attractions: ["Gergeti Trinity Church", "Gergeti Hiking", "Caucasus Mountain Views"] },
+            { name: "Sighnaghi", days: "1 day", attractions: ["Wine Town", "Winery Tasting", "Alazani River Valley"] }
+          ],
+          tips: "Georgia is the birthplace of wine; Kazbegi's mountain scenery is breathtaking. Chinese passport holders get visa-free entry. Fly or take land transport from Tbilisi to Istanbul, Turkey. Local currency is Lari; bring USD or EUR to exchange."
+        },
+        {
+          countryName: "Turkey",
+          entryLabel: "Final Destination",
+          days: "4-5 days",
+          transportFrom: "Fly from Tbilisi to Istanbul (~2.5 hrs)",
+          cities: [
+            { name: "Istanbul", days: "4-5 days", attractions: ["Blue Mosque", "Hagia Sophia", "Grand Bazaar", "Bosphorus Cruise", "Topkapi Palace"] }
+          ],
+          tips: "Istanbul, the ancient capital spanning Europe and Asia, makes a perfect journey endpoint. Chinese passport holders can apply for an e-visa. Allow plenty of time to explore this city's rich history and culture."
+        }
+      ]
+    };
+
+    // 获取当前语言的路线数据
+    function getRouteData(lang) {
+      return routeDataTranslations[lang] || routeDataTranslations.zh;
+    }
+
+    // 获取翻译文本
+    function t(key) {
+      return translations[currentLang][key] || key;
+    }
+
+    // 国家 ISO 数字代码映射（用于匹配 TopoJSON）
+    const countryIsoMap = {
+      "CN": 156,  // 中国
+      "KZ": 398,  // 哈萨克斯坦
+      "UZ": 860,  // 乌兹别克斯坦
+      "AZ": 31,   // 阿塞拜疆
+      "IR": 364,  // 伊朗
+      "AM": 51,   // 亚美尼亚
+      "GE": 268,  // 格鲁吉亚
+      "TR": 792   // 土耳其
+    };
+
+    // 提取所有城市（用于绘制轨迹）
+    const allCities = [];
+    routeData.forEach(seg => {
+      seg.cities.forEach(city => {
+        allCities.push({
+          ...city,
+          segId: seg.id,
+          countryName: seg.countryName
+        });
+      });
+    });
+
+    // ===== 全局变量 =====
+    let svg, g, projection, path, countryPaths, cityGroups;
+    let selectedId = null;
+    let currentTransform = d3.zoomIdentity;
+
+    const mapWrap = document.getElementById("mapWrap");
+    const panel = document.getElementById("panel");
+    const timeline = document.getElementById("timeline");
+    const tooltip = document.getElementById("tooltip");
+    const loading = document.getElementById("loading");
+
+    // ===== 初始化 SVG =====
+    function initSvg() {
+      svg = d3.select("#mapWrap")
+        .append("svg")
+        .attr("width", "100%")
+        .attr("height", "100%");
+
+      // 渐变定义
+      const defs = svg.append("defs");
+      const gradient = defs.append("linearGradient")
+        .attr("id", "routeGradient")
+        .attr("x1", "0%").attr("y1", "0%")
+        .attr("x2", "100%").attr("y2", "100%");
+      gradient.append("stop").attr("offset", "0%").attr("stop-color", "#d97706");
+      gradient.append("stop").attr("offset", "100%").attr("stop-color", "#f59e0b");
+
+      g = svg.append("g");
+
+      // 缩放行为
+      const zoom = d3.zoom()
+        .scaleExtent([0.5, 8])
+        .on("zoom", (event) => {
+          currentTransform = event.transform;
+          g.attr("transform", event.transform);
+          
+          // 文字反向缩放：放大画面时文字缩小，缩小画面时文字放大
+          const k = event.transform.k;
+          
+          g.selectAll(".city-label")
+            .style("font-size", function() {
+              const isEndpoint = d3.select(this).classed("endpoint");
+              return ((isEndpoint ? 12 : 11) / k) + "px";
+            })
+            .style("stroke-width", (2.5 / k) + "px");
+          
+          g.selectAll(".country-num")
+            .style("font-size", (14 / k) + "px");
+        });
+
+      svg.call(zoom);
+
+      // 双击重置
+      svg.on("dblclick.zoom", () => {
+        svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+      });
+    }
+
+    // ===== 渲染地图 =====
+    function renderMap(world) {
+      const width = mapWrap.clientWidth;
+      const height = mapWrap.clientHeight;
+
+      // 投影：聚焦中亚/西亚区域
+      projection = d3.geoNaturalEarth1()
+        .center([55, 40])
+        .scale(Math.min(width, height) * 1.2)
+        .translate([width / 2, height / 2]);
+
+      path = d3.geoPath().projection(projection);
+
+      // 国家 ISO 数字代码集合
+      const routeIsoNums = new Set(routeData.map(r => countryIsoMap[r.countryCode]));
+      
+      // 台湾 ISO 代码 (158) - 确保显示为中国的一部分
+      const TAIWAN_ISO = 158;
+      const CHINA_ISO = 156;
+
+      // 绘制国家
+      const countries = topojson.feature(world, world.objects.countries).features;
+      countryPaths = g.selectAll(".country")
+        .data(countries)
+        .enter()
+        .append("path")
+        .attr("class", d => {
+          const isoNum = +d.id;
+          // 台湾显示为中国的一部分
+          if (isoNum === TAIWAN_ISO) {
+            return "country route-country";
+          }
+          return routeIsoNums.has(isoNum) ? "country route-country" : "country";
+        })
+        .attr("d", path)
+        .on("click", function(event, d) {
+          const isoNum = +d.id;
+          // 台湾点击显示中国行程
+          const targetIso = isoNum === TAIWAN_ISO ? CHINA_ISO : isoNum;
+          const seg = routeData.find(r => countryIsoMap[r.countryCode] === targetIso);
+          if (seg) {
+            selectSegment(seg.id);
+          }
+        })
+        .on("mouseover", function(event, d) {
+          const isoNum = +d.id;
+          // 台湾显示为中国
+          const targetIso = isoNum === TAIWAN_ISO ? CHINA_ISO : isoNum;
+          const seg = routeData.find(r => countryIsoMap[r.countryCode] === targetIso);
+          if (seg) {
+            const translatedSeg = getRouteData(currentLang)[seg.id];
+            const displayName = isoNum === TAIWAN_ISO 
+              ? (currentLang === "en" ? "China · Taiwan" : "中国·台湾")
+              : translatedSeg.countryName;
+            showTooltip(event, displayName);
+          }
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", hideTooltip);
+
+      // 手动绘制台湾岛（确保中国地图包含台湾）
+      const taiwanCoords = [
+        [121.0, 25.3], [121.5, 25.2], [121.9, 24.8],
+        [121.5, 24.0], [121.0, 23.0], [120.5, 22.0],
+        [120.2, 22.0], [120.0, 22.5], [120.2, 23.2],
+        [120.5, 24.0], [120.8, 24.8], [121.0, 25.3]
+      ];
+      const taiwanGeoJSON = {
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [taiwanCoords]
+        },
+        properties: { name: "Taiwan" }
+      };
+
+      g.append("path")
+        .datum(taiwanGeoJSON)
+        .attr("class", "country route-country")
+        .attr("d", path)
+        .on("click", function() {
+          const seg = routeData.find(r => r.countryCode === "CN");
+          if (seg) selectSegment(seg.id);
+        })
+        .on("mouseover", function(event) {
+          showTooltip(event, currentLang === "en" ? "China · Taiwan" : "中国·台湾");
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", hideTooltip);
+
+      // 国家编号标签
+      g.selectAll(".country-num")
+        .data(routeData)
+        .enter()
+        .append("text")
+        .attr("class", "country-num")
+        .attr("x", d => {
+          const city = d.cities[0];
+          return projection(city.coords)[0];
+        })
+        .attr("y", d => {
+          const city = d.cities[0];
+          return projection(city.coords)[1] - 20;
+        })
+        .text(d => d.id + 1);
+
+      // 绘制轨迹线
+      const line = d3.line()
+        .x(d => projection(d.coords)[0])
+        .y(d => projection(d.coords)[1])
+        .curve(d3.curveNatural);
+
+      const trackPath = g.append("path")
+        .datum(allCities)
+        .attr("class", "track")
+        .attr("d", line);
+
+      // 轨迹动画
+      const totalLength = trackPath.node().getTotalLength();
+      trackPath
+        .attr("stroke-dasharray", totalLength)
+        .attr("stroke-dashoffset", totalLength)
+        .transition()
+        .duration(2500)
+        .ease(d3.easeLinear)
+        .attr("stroke-dashoffset", 0)
+        .on("end", () => {
+          trackPath.attr("stroke-dasharray", "8 4");
+        });
+
+      // 绘制城市点
+      cityGroups = g.selectAll(".city-group")
+        .data(allCities)
+        .enter()
+        .append("g")
+        .attr("class", d => {
+          let cls = "city-group";
+          if (d.segId === 0 || d.segId === 8) cls += " endpoint";
+          return cls;
+        })
+        .attr("transform", d => {
+          const [x, y] = projection(d.coords);
+          return `translate(${x}, ${y})`;
+        })
+        .on("click", function(event, d) {
+          selectSegment(d.segId);
+        })
+        .on("mouseover", function(event, d) {
+          const translatedSeg = getRouteData(currentLang)[d.segId];
+          const translatedCity = translatedSeg.cities.find(c => c.name === d.name) || d;
+          const sep = currentLang === "en" ? ", " : "（";
+          const sepEnd = currentLang === "en" ? "" : "）";
+          showTooltip(event, `${translatedCity.name}${sep}${translatedSeg.countryName}${sepEnd}`);
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", hideTooltip);
+
+      // 城市圆点
+      cityGroups.append("circle")
+        .attr("class", "city-dot")
+        .attr("r", 3);
+
+      // 城市标签 - 添加到主图层
+      cityGroups.append("text")
+        .attr("class", d => {
+          let cls = "city-label";
+          if (d.segId === 0 || d.segId === 8) cls += " endpoint";
+          return cls;
+        })
+        .attr("x", 8)
+        .attr("y", 4)
+        .style("font-size", d => (d.segId === 0 || d.segId === 8) ? "12px" : "11px")
+        .text(d => {
+          const translatedSeg = getRouteData(currentLang)[d.segId];
+          const translatedCity = translatedSeg.cities.find(c => c.name === d.name) || d;
+          return translatedCity.name;
+        });
+
+      // 起终点特殊标记（旗帜图标）
+      cityGroups.filter(d => d.segId === 0 || d.segId === 8)
+        .append("text")
+        .attr("class", "flag-icon")
+        .attr("x", -12)
+        .attr("y", 5)
+        .attr("font-size", 14)
+        .text(d => d.segId === 0 ? "🚩" : "🏁");
+
+      // 点击空白处恢复总览
+      svg.on("click", function(event) {
+        if (event.target.tagName !== "path" && event.target.tagName !== "circle" && event.target.tagName !== "text") {
+          selectSegment(null);
+        }
+      });
+
+      // 隐藏加载提示
+      loading.style.display = "none";
+    }
+
+    // ===== 选中某段行程 =====
+    function selectSegment(segId) {
+      selectedId = segId;
+
+      // 更新国家高亮
+      countryPaths.classed("active", false);
+      if (segId !== null) {
+        const seg = routeData.find(r => r.id === segId);
+        if (seg) {
+          countryPaths.filter(d => +d.id === countryIsoMap[seg.countryCode]).classed("active", true);
+        }
+      }
+
+      // 更新城市标记
+      cityGroups.classed("active", d => d.segId === segId);
+
+      // 更新时间轴
+      d3.selectAll(".tl-card").classed("active", d => d === segId);
+
+      // 渲染面板
+      renderPanel(segId);
+    }
+
+    // ===== 渲染面板 =====
+    function renderPanel(segId) {
+      panel.innerHTML = "";
+
+      if (segId === null) {
+        renderOverview();
+        return;
+      }
+
+      const seg = routeData.find(r => r.id === segId);
+      if (!seg) return;
+
+      // 获取翻译后的路线数据
+      const translatedData = getRouteData(currentLang)[segId];
+      const segmentLabel = currentLang === "zh"
+        ? `第 ${seg.id + 1} 段 · ${translatedData.entryLabel}`
+        : `${t("segment")} ${seg.id + 1}${t("segmentSuffix")} · ${translatedData.entryLabel}`;
+
+      const wrap = document.createElement("div");
+      wrap.className = "panel-content country-detail";
+      wrap.innerHTML = `
+        <div class="ctry-head">
+          <div class="ctry-flag">${seg.flag}</div>
+          <div class="ctry-name">${translatedData.countryName}</div>
+        </div>
+        <div class="ctry-meta">
+          <span class="tag entry">${segmentLabel}</span>
+          <span class="tag days">${currentLang === "zh" ? "建议" : "Rec."} <b>${translatedData.days}</b></span>
+        </div>
+
+        <div class="info-block">
+          <div class="info-label">${t("transportLabel")}</div>
+          <div class="info-text">${translatedData.transportFrom}</div>
+        </div>
+
+        <div class="info-block">
+          <div class="info-label">${t("citiesLabel")}</div>
+        </div>
+      `;
+
+      translatedData.cities.forEach(city => {
+        const card = document.createElement("div");
+        card.className = "city-card";
+        card.innerHTML = `
+          <div class="city-card-head">
+            <div class="city-card-name">${city.name}</div>
+            <div class="city-card-days">${city.days}</div>
+          </div>
+          <ul class="attractions">
+            ${city.attractions.map(a => `<li>${a}</li>`).join("")}
+          </ul>
+        `;
+        wrap.querySelector(".info-block:last-child").appendChild(card);
+      });
+
+      const tips = document.createElement("div");
+      tips.className = "tips-box";
+      tips.setAttribute("data-tips-title", t("tipsPrefix"));
+      tips.textContent = translatedData.tips;
+      wrap.appendChild(tips);
+
+      panel.appendChild(wrap);
+      panel.scrollTop = 0;
+    }
+
+    // ===== 渲染总览面板 =====
+    function renderOverview() {
+      const totalDays = routeData.reduce((s, r) => s + r.daysNum, 0);
+      const totalCities = allCities.length;
+      const translatedRouteData = getRouteData(currentLang);
+
+      panel.innerHTML = `
+        <div class="panel-content panel-overview">
+          <h2>${t("overviewTitle")}</h2>
+          <div class="lead">${t("overviewLead")}</div>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="label">${t("totalSegments")}</div>
+              <div class="value">${routeData.length}<small>${t("unitSegment")}</small></div>
+            </div>
+            <div class="stat">
+              <div class="label">${t("totalCountries")}</div>
+              <div class="value">8<small>${t("unitCountry")}</small></div>
+            </div>
+            <div class="stat">
+              <div class="label">${t("totalDays")}</div>
+              <div class="value">~${totalDays}<small>${t("unitDay")}</small></div>
+            </div>
+            <div class="stat">
+              <div class="label">${t("totalCities")}</div>
+              <div class="value">${totalCities}<small>${t("unitCity")}</small></div>
+            </div>
+          </div>
+
+          <div class="panel-section-title">${t("fullRoute")}</div>
+          <ul class="route-mini-list">
+            ${routeData.map((r, idx) => `
+              <li data-seg="${r.id}">
+                <span class="num">${String(r.id + 1).padStart(2, "0")}</span>
+                <span class="name">${r.flag} ${translatedRouteData[idx].countryName}</span>
+                <span class="days">${translatedRouteData[idx].days}</span>
+              </li>
+            `).join("")}
+          </ul>
+
+          <div class="panel-section-title">${t("usage")}</div>
+          <div class="info-text" style="font-size: 13px; color: var(--ink-soft);">
+            ${t("usageText")}
+          </div>
+        </div>
+      `;
+
+      // 绑定路线列表点击事件
+      d3.selectAll(".route-mini-list li").on("click", function() {
+        const segId = +this.dataset.seg;
+        selectSegment(segId);
+      });
+    }
+
+    // ===== 渲染时间轴 =====
+    function renderTimeline() {
+      timeline.innerHTML = "";
+      const translatedRouteData = getRouteData(currentLang);
+      routeData.forEach((r, idx) => {
+        const card = document.createElement("div");
+        card.className = "tl-card";
+        card.dataset.seg = r.id;
+        const translatedCity = translatedRouteData[idx].cities[0].name;
+        const translatedLastCity = translatedRouteData[idx].cities[translatedRouteData[idx].cities.length - 1].name;
+        const routeText = translatedCity === translatedLastCity ? translatedCity : `${translatedCity} → ${translatedLastCity}`;
+        card.innerHTML = `
+          <div class="tl-num">${r.id + 1}</div>
+          <div class="tl-name">${r.flag} ${translatedRouteData[idx].countryName}</div>
+          <div class="tl-days">${translatedRouteData[idx].days} · ${routeText}</div>
+        `;
+        card.addEventListener("click", () => selectSegment(r.id));
+        timeline.appendChild(card);
+      });
+    }
+
+    // ===== tooltip 工具函数 =====
+    function showTooltip(event, text) {
+      tooltip.classList.add("visible");
+      tooltip.textContent = text;
+      moveTooltip(event);
+    }
+
+    function moveTooltip(event) {
+      const rect = mapWrap.getBoundingClientRect();
+      const x = event.clientX - rect.left + 12;
+      const y = event.clientY - rect.top - 20;
+      tooltip.style.left = x + "px";
+      tooltip.style.top = y + "px";
+    }
+
+    function hideTooltip() {
+      tooltip.classList.remove("visible");
+    }
+
+    // ===== 窗口大小变化处理 =====
+    function handleResize() {
+      if (!projection) return; // 地图未加载完成时跳过
+      
+      const width = mapWrap.clientWidth;
+      const height = mapWrap.clientHeight;
+
+      projection
+        .scale(Math.min(width, height) * 1.2)
+        .translate([width / 2, height / 2]);
+
+      countryPaths.attr("d", path);
+
+      cityGroups.attr("transform", d => {
+        const [x, y] = projection(d.coords);
+        return `translate(${x}, ${y})`;
+      });
+
+      g.selectAll(".country-num")
+        .attr("x", d => projection(d.cities[0].coords)[0])
+        .attr("y", d => projection(d.cities[0].coords)[1] - 20);
+
+      const line = d3.line()
+        .x(d => projection(d.coords)[0])
+        .y(d => projection(d.coords)[1])
+        .curve(d3.curveNatural);
+
+      g.select(".track").attr("d", line(allCities));
+    }
+
+    // ===== 切换语言 =====
+    function switchLanguage(lang) {
+      currentLang = lang;
+
+      // 更新按钮状态
+      document.querySelectorAll(".lang-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.lang === lang);
+      });
+
+      // 更新页面静态文本
+      document.querySelector(".title-group h1").textContent = t("title");
+      document.querySelector(".title-group .subtitle").textContent = t("subtitle");
+      document.querySelector(".map-hint").textContent = t("mapHint");
+      document.querySelector(".timeline-label").textContent = t("timelineLabel");
+      document.querySelector('[data-i18n="segmentsLabel"]').textContent = t("segmentsLabel");
+      document.querySelector('[data-i18n="countriesLabel"]').textContent = t("countriesLabel");
+      document.querySelector('[data-i18n="daysLabel"]').textContent = t("daysLabel");
+      document.title = t("title") + " · " + t("subtitle");
+
+      // 更新 html lang 属性
+      document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+
+      // 更新地图上的城市标签
+      if (cityGroups) {
+        cityGroups.select(".city-label").text(d => {
+          const translatedSeg = getRouteData(currentLang)[d.segId];
+          const translatedCity = translatedSeg.cities.find(c => c.name === d.name) || d;
+          return translatedCity.name;
+        });
+      }
+
+      // 重新渲染动态内容
+      renderTimeline();
+      renderPanel(selectedId); // 会处理 null（总览）和具体行程段
+
+      // 更新地图上的 tooltip（如果可见则隐藏）
+      hideTooltip();
+    }
+
+    // ===== 启动 =====
+    function init() {
+      initSvg();
+      renderTimeline();
+      renderOverview();
+
+      d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+        .then(world => {
+          renderMap(world);
+        })
+        .catch(err => {
+          loading.textContent = t("loadError");
+          loading.style.color = "var(--accent)";
+          console.error(err);
+        });
+
+      window.addEventListener("resize", handleResize);
+
+      // 绑定语言切换按钮
+      document.querySelectorAll(".lang-btn").forEach(btn => {
+        btn.addEventListener("click", () => switchLanguage(btn.dataset.lang));
+      });
+
+      // 全局暴露给 onclick 使用
+      window.selectSegment = selectSegment;
+    }
+
+    init();
+  </script>
+</body>
+</html>
